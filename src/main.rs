@@ -1,5 +1,5 @@
 // Uncomment this block to pass the first stage
-use std::io::Write;
+use std::io::{Read, Write};
 use std::net::TcpListener;
 
 fn main() {
@@ -11,7 +11,15 @@ fn main() {
         match stream {
             Ok(mut stream) => {
                 println!("accepted new connection");
-                stream.write(b"HTTP/1.1 200 OK\r\n\r\n").expect("200 \n");
+                let mut buffer = [0; 1024];
+                stream.read(&mut buffer).unwrap();
+
+                let response = if buffer.starts_with(b"GET / HTTP/1.1\r\n") {
+                    "HTTP/1.1 200 OK\r\n\r\n"
+                } else {
+                    "HTTP/1.1 404 Not Found\r\n\r\n"
+                };
+                stream.write(response.as_bytes()).unwrap();
             }
             Err(e) => {
                 println!("error: {}", e);
