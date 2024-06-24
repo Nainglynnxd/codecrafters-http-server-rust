@@ -1,4 +1,3 @@
-use std::fmt::format;
 // Uncomment this block to pass the first stage
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -27,8 +26,8 @@ fn handle_connection(mut stream: TcpStream) {
 
     let request = String::from_utf8_lossy(&buffer);
 
-    let mut headers = request.lines();
-    if let Some(request_line) = headers.next() {
+    let mut req_body = request.lines();
+    if let Some(request_line) = req_body.next() {
         let parts: Vec<&str> = request_line.split_whitespace().collect();
         if parts.len() == 3 {
             let request_header = parts[0] == "GET";
@@ -36,7 +35,7 @@ fn handle_connection(mut stream: TcpStream) {
 
             let mut user_agent = "";
 
-            for header in headers {
+            for header in req_body {
                 if header.starts_with("User-Agent") {
                     user_agent = header.trim_start_matches("User-Agent:").trim();
                     break;
