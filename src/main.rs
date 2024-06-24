@@ -1,3 +1,4 @@
+use std::fmt::format;
 // Uncomment this block to pass the first stage
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -33,7 +34,7 @@ fn handle_connection(mut stream: TcpStream) {
             let request_header = parts[0] == "GET";
             let path = parts[1];
 
-            let mut user_agent = "unknown";
+            let mut user_agent = "";
 
             for header in headers {
                 if header.starts_with("User-Agent") {
@@ -42,24 +43,24 @@ fn handle_connection(mut stream: TcpStream) {
                 }
             }
 
-            let response = if request_header && path == "/user-agent" {
-                format!(
-                    "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {}\r\n\r\n{}",
-                    user_agent.len(),
-                    user_agent
-                )
-            } else if request_header && path == "/" {
-                format!("HTTP/1.1 200 OK\r\n\r\n")
-            } else if request_header && path.starts_with("/echo/") {
-                let response_body = path.trim_start_matches("/echo/");
-                format!(
-                    "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {}\r\n\r\n{}",
-                    response_body.len(),
-                    response_body
-                )
+            let response = if request_header {
+                match path {
+                    "/" => format!("HTTP/1.1 200 OK\r\n\r\n"),
+                    p if p.starts_with("/echo/") => {
+                        let response_body = path.trim_start_matches("/echo/");
+                        format!(
+                            "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {}\r\n\r\n{}",
+                            response_body.len(),
+                            response_body
+                        )
+                    },
+                    "/user-agent" => format!("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {}\r\n\r\n{}", user_agent.len(), user_agent),
+                    _ => format!("HTTP/1.1 404 Not Found\r\n\r\n")
+                }
             } else {
-                format!("HTTP/1.1 404 Not Found\r\n\r\n")
+                format!("HTTP/1.1 405 Method Not Allowed\r\n\r\n")
             };
+
             stream.write(response.as_bytes()).unwrap();
         }
     }
