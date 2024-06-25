@@ -24,11 +24,11 @@ fn main() {
 
 fn handle_connection(mut stream: TcpStream) {
     const NOT_FOUND: &str = "HTTP/1.1 404 Not Found\r\n\r\n";
+    const CREATED: &str = "HTTP/1.1 201 Created\r\n\r\n";
     let mut buffer = [0; 1024];
     match stream.read(&mut buffer) {
-        Ok(_) => {
-            let request = String::from_utf8_lossy(&buffer);
-
+        Ok(size) => {
+            let request = String::from_utf8_lossy(&buffer[..size]);
             let mut req_lines = request.lines();
             if let Some(request_line) = req_lines.next() {
                 let parts: Vec<&str> = request_line.split_whitespace().collect();
@@ -37,16 +37,22 @@ fn handle_connection(mut stream: TcpStream) {
                     let path = parts[1];
 
                     let mut user_agent = "";
+                    let mut content_length = 0;
 
-                    for header in req_lines {
+                    for header in req_lines.clone() {
                         if header.starts_with("User-Agent:") {
                             user_agent = header.trim_start_matches("User-Agent:").trim();
-                            break;
+                        } else if header.starts_with("Content-Length:") {
+                            content_length = header
+                                .trim_start_matches("Content-Length:")
+                                .trim()
+                                .parse()
+                                .unwrap_or(0);
                         }
                     }
 
-                    let response = if request_method == "GET" {
-                        match path {
+                    let response = match request_method {
+                        "GET" => match path {
                             "/" => "HTTP/1.1 200 OK\r\n\r\n".to_owned(),
                             f if f.starts_with("/files/") => {
                                 let filename = &path[7..];
@@ -75,12 +81,44 @@ fn handle_connection(mut stream: TcpStream) {
                                 user_agent
                             ),
                             _ => NOT_FOUND.to_owned(),
-                        }
-                    } else {
-                        "HTTP/1.1 405 Method Not Allowed\r\n\r\n".to_owned()
+                        },
+                        "POST" => match path {
+                            p if p.starts_with("/files/") => {
+                                let filename = &path[7..];
+
+                                let mut headers_done = false;
+                                let mut body_start_index = 0;
+
+                                for (i, line) in request.lines().enumerate() {
+                                    if line.is_empty() {
+                                        headers_done = true;
+                                        body_start_index = i + 1;
+                                        break;
+                                    }
+                                }
+
+                                if headers_done {
+                                    let body = &buffer[size - content_length..size];
+                                    let file_path = format!("/tmp/data/codecrafters.io/http-server-tester/{}", filename);
+                                    match fs::write(&file_path, body) {
+                                        Ok(_) => CREATED.to_owned(),
+                                        Err(e) => {
+                                            eprintln!("Failed to write to file: {}", e);
+                                            "HTTP/1.1 500 Internal Server Error\r\n\r\n".to_owned()
+                                        }
+                                    }
+                                } else {
+                                    "HTTP/1.1 400 Bad Request\r\n\r\n".to_owned()
+                                }
+                            }
+                            _ => NOT_FOUND.to_owned(),
+                        },
+                        _ => "HTTP/1.1 405 Method Not Allowed\r\n\r\n".to_owned(),
                     };
 
-                    stream.write_all(response.as_bytes()).unwrap();
+                    if !response.is_empty() {
+                        stream.write_all(response.as_bytes()).unwrap();
+                    }
                 }
             }
         }
