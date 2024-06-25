@@ -22,7 +22,7 @@ fn main() {
 
 fn handle_connection(mut stream: TcpStream) {
     let mut buffer = [0; 1024];
-    stream.read(&mut buffer).unwrap();
+    stream.read_exact(&mut buffer).unwrap();
 
     let request = String::from_utf8_lossy(&buffer);
 
@@ -44,7 +44,7 @@ fn handle_connection(mut stream: TcpStream) {
 
             let response = if request_header {
                 match path {
-                    "/" => format!("HTTP/1.1 200 OK\r\n\r\n"),
+                    "/" => "HTTP/1.1 200 OK\r\n\r\n".to_owned(),
                     p if p.starts_with("/echo/") => {
                         let response_body = path.trim_start_matches("/echo/");
                         format!(
@@ -52,15 +52,20 @@ fn handle_connection(mut stream: TcpStream) {
                             response_body.len(),
                             response_body
                         )
-                    },
-                    "/user-agent" => format!("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {}\r\n\r\n{}", user_agent.len(), user_agent),
-                    _ => format!("HTTP/1.1 404 Not Found\r\n\r\n")
+                    }
+                    "/user-agent" => format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n
+                        Content-Length: {}\r\n\r\n{}",
+                        user_agent.len(),
+                        user_agent
+                    ),
+                    _ => "HTTP/1.1 404 Not Found\r\n\r\n".to_owned(),
                 }
             } else {
-                format!("HTTP/1.1 405 Method Not Allowed\r\n\r\n")
+                "HTTP/1.1 405 Method Not Allowed\r\n\r\n".to_owned()
             };
 
-            stream.write(response.as_bytes()).unwrap();
+            stream.write_all(response.as_bytes()).unwrap();
         }
     }
 }
