@@ -23,6 +23,7 @@ fn main() {
 }
 
 fn handle_connection(mut stream: TcpStream) {
+    const NOT_FOUND: &str = "HTTP/1.1 404 Not Found\r\n\r\n";
     let mut buffer = [0; 1024];
     match stream.read(&mut buffer) {
         Ok(_) => {
@@ -49,7 +50,6 @@ fn handle_connection(mut stream: TcpStream) {
                             "/" => "HTTP/1.1 200 OK\r\n\r\n".to_owned(),
                             f if f.starts_with("/files/") => {
                                 let filename = &path[7..];
-                                println!("Path: {filename}");
                                 match fs::read(format!("/tmp/data/codecrafters.io/http-server-tester/{}", filename)) {
                                     Ok(contents) => {
                                         format!(
@@ -58,7 +58,7 @@ fn handle_connection(mut stream: TcpStream) {
                                             String::from_utf8_lossy(&contents)
                                         )
                                     }
-                                    Err(_) => "HTTP/1.1 404 Not Found\r\n\r\n".to_owned(),
+                                    Err(_) => NOT_FOUND.to_owned(),
                                 }
                             }
                             p if p.starts_with("/echo/") => {
@@ -74,7 +74,7 @@ fn handle_connection(mut stream: TcpStream) {
                                 user_agent.len(),
                                 user_agent
                             ),
-                            _ => "HTTP/1.1 404 Not Found\r\n\r\n".to_owned(),
+                            _ => NOT_FOUND.to_owned(),
                         }
                     } else {
                         "HTTP/1.1 405 Method Not Allowed\r\n\r\n".to_owned()
