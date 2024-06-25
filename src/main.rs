@@ -1,6 +1,7 @@
 // Uncomment this block to pass the first stage
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
+use std::thread;
 
 fn main() {
     // You can use print statements as follows for debugging, they'll be visible when running tests.
@@ -11,7 +12,9 @@ fn main() {
         match stream {
             Ok(stream) => {
                 println!("accepted new connection");
-                handle_connection(stream);
+                thread::spawn(|| {
+                    handle_connection(stream);
+                });
             }
             Err(e) => {
                 println!("error: {}", e);
@@ -22,7 +25,7 @@ fn main() {
 
 fn handle_connection(mut stream: TcpStream) {
     let mut buffer = [0; 1024];
-    stream.read_exact(&mut buffer).unwrap();
+    stream.read(&mut buffer).unwrap();
 
     let request = String::from_utf8_lossy(&buffer);
 
@@ -54,8 +57,7 @@ fn handle_connection(mut stream: TcpStream) {
                         )
                     }
                     "/user-agent" => format!(
-                        "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n
-                        Content-Length: {}\r\n\r\n{}",
+                        "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {}\r\n\r\n{}",
                         user_agent.len(),
                         user_agent
                     ),
