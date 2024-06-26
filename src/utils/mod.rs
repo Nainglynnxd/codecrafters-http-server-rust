@@ -15,7 +15,7 @@ pub fn echo(request: &Cow<str>, path: &str) -> String {
     format!(
         "{}Content-Type: text/plain{}\r\nContent-Length: {}\r\n\r\n{}",
         OK.part(),
-        if encoding == "gzip" {
+        if encoding.contains("gzip") {
             "\r\nContent-Encoding: gzip"
         } else {
             ""
