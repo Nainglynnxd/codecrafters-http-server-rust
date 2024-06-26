@@ -31,7 +31,7 @@ fn handle_connection(mut stream: TcpStream) {
             let response = match extract_request_method_and_path(request.lines().next()) {
                 (GET, path) => match path {
                     "/" => OK.whole(),
-                    p if p.starts_with("/echo/") => echo(path),
+                    p if p.starts_with("/echo/") => echo(&request, path),
                     u if u.starts_with("/user-agent") => user_agent(&request),
                     f if f.starts_with("/files/") => file(path),
                     _ => NotFound.whole(),
