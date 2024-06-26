@@ -1,11 +1,8 @@
-#![allow(dead_code, unused_imports)]
 mod http;
-use http::extract_request_method_and_path;
-use http::Request::{GET, NONE, POST};
-use http::StatusCode::{Created, NotFound, OK};
+mod utils;
+use http::{extract_request_method_and_path, Request::*, StatusCode::*};
+use utils::*;
 
-use std::borrow::Cow;
-use std::fs;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::thread;
@@ -35,41 +32,19 @@ fn handle_connection(mut stream: TcpStream) {
                 (GET, path) => match path {
                     "/" => OK.whole(),
                     p if p.starts_with("/echo/") => echo(path),
-                    u if u.starts_with("/user-agent") => user_agent(request),
+                    u if u.starts_with("/user-agent") => user_agent(&request),
+                    f if f.starts_with("/files/") => file(path),
                     _ => NotFound.whole(),
                 },
-                (POST, "") => OK.whole(),
+                (POST, path) => match path {
+                    p if p.starts_with("/files/") => create_file(&request, path),
+                    _ => NotFound.whole(),
+                },
                 (NONE, "") => String::new(),
                 _ => String::new(),
             };
             stream.write(response.as_bytes()).unwrap();
         }
-        Err(_) => {}
+        Err(e) => eprintln!("Failed to read from connection: {}", e),
     }
-}
-
-fn echo(path: &str) -> String {
-    let response = path.trim_start_matches("/echo/");
-    format!(
-        "{}Content-Type: text/plain\r\nContent-Length: {}\r\n\r\n{}",
-        OK.part(),
-        response.len(),
-        response
-    )
-}
-
-fn user_agent(path: Cow<str>) -> String {
-    let mut agent = "";
-    for header in path.lines() {
-        if header.starts_with("User-Agent:") {
-            agent = header.trim_start_matches("User-Agent:").trim();
-            break;
-        }
-    }
-    format!(
-        "{}\r\nContent-Type: text/plain\r\nContent-Length: {}\r\n\r\n{}",
-        OK.part(),
-        agent.len(),
-        agent
-    )
 }

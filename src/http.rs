@@ -2,14 +2,17 @@ pub enum StatusCode {
     OK = 200,
     NotFound = 404,
     Created = 201,
+    InternalServer = 500,
 }
 
 impl StatusCode {
     pub fn as_str(&self) -> &'static str {
+        use StatusCode::*;
         match self {
-            Self::OK => "200 OK",
-            Self::Created => "201 Created",
-            Self::NotFound => "404 Not Found",
+            OK => "200 OK",
+            Created => "201 Created",
+            NotFound => "404 Not Found",
+            InternalServer => "500 Internal Server",
         }
     }
 
