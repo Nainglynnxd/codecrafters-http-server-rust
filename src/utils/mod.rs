@@ -1,73 +1,35 @@
 use super::*;
-use std::{borrow::Cow, fs};
 
-pub fn echo(request: &Cow<str>, path: &str) -> String {
-    let mut encoding = "";
-    for header in request.lines() {
-        if header.starts_with("Accept-Encoding:") {
-            encoding = header.trim_start_matches("Accept-Encoding:").trim();
-            break;
-        }
-    }
-
-    let response = path.trim_start_matches("/echo/");
-
-    format!(
-        "{}Content-Type: text/plain{}\r\nContent-Length: {}\r\n\r\n{}",
-        OK.part(),
-        if encoding.contains("gzip") {
-            "\r\nContent-Encoding: gzip"
-        } else {
-            ""
-        },
-        response.len(),
-        response
-    )
-}
-
-pub fn user_agent(path: &Cow<str>) -> String {
-    let mut agent = "";
-    for header in path.lines() {
-        if header.starts_with("User-Agent:") {
-            agent = header.trim_start_matches("User-Agent:").trim();
-            break;
-        }
-    }
-    format!(
-        "{}Content-Type: text/plain\r\nContent-Length: {}\r\n\r\n{}",
-        OK.part(),
-        agent.len(),
-        agent
-    )
-}
-
-pub fn file(path: &str) -> String {
-    let filename = &path[7..];
-    let path_to_read = format!("/tmp/data/codecrafters.io/http-server-tester/{}", filename);
-
-    let response = match fs::read(path_to_read) {
-        Ok(contents) => format!(
-            "{}Content-Type: application/octet-stream\r\nContent-Length: {}\r\n\r\n{}",
-            OK.part(),
-            contents.len(),
-            String::from_utf8_lossy(&contents)
-        ),
-        Err(_) => NotFound.whole(),
+pub fn parse_request(request: &str) -> Result<HttpRequest, Error> {
+    let lines = request.lines().collect::<Vec<&str>>();
+    let mut req_header = lines[0].split_whitespace();
+    let user_agent = parse_header("User-Agent: ", &lines);
+    let encoding = parse_header("Accept-Encoding: ", &lines);
+    let http_request = HttpRequest {
+        path: String::from(req_header.nth(1).unwrap_or("")),
+        user_agent: Some(user_agent),
+        valid_encoding: Some(encoding),
     };
-
-    println!("Response: {}", response);
-
-    response
+    Ok(http_request)
 }
 
-pub fn create_file(request: &Cow<str>, path: &str) -> String {
-    let filename = &path[7..];
-    let req_body = request.lines().last().unwrap();
-    let path_to_write = format!("/tmp/data/codecrafters.io/http-server-tester/{}", filename);
+pub fn parse_header(header: &str, lines: &Vec<&str>) -> String {
+    lines
+        .iter()
+        .find(|line| line.starts_with(header))
+        .unwrap_or(&"")
+        .replace(header, "")
+}
 
-    if let Ok(_) = fs::write(&path_to_write, req_body) {
-        Created.whole()
-    } else {
-        InternalServer.whole()
+pub fn file_path_exists(path: &str) -> bool {
+    match fs::metadata(path) {
+        Ok(metadata) => {
+            println!("File metadata for path {}: {:?}", path, metadata);
+            metadata.is_file()
+        }
+        Err(e) => {
+            println!("Failed to get metadata for path {}: {}", path, e);
+            false
+        }
     }
 }
