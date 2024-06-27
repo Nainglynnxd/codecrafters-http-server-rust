@@ -14,3 +14,6 @@ impl Default for HttpRequest {
         }
     }
 }
+
+//
+// handle_connection(stream, &request_string, directory) {}
