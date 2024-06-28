@@ -61,31 +61,28 @@ fn handle_connection(mut stream: TcpStream, request: &str, directory: String) {
                 response.push_str(&res.to_string());
             }
             route if route.starts_with("/echo/") => {
-                let content = route.replace("/echo/", "");
-                let compressed = if !encoding.as_ref().unwrap().is_empty() {
-                    let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
-                    encoder.write_all(content.as_bytes()).unwrap();
-                    encoder.finish().unwrap()
-                } else {
-                    content.into_bytes()
-                };
-
-                println!("{:?}", compressed);
-
-                response.push_str(&String::from("HTTP/1.1 200 OK\r\n"));
+                let body = route.replace("/echo/", "");
+                response.push_str("HTTP/1.1 200 OK\r\n");
                 response.push_str(&String::from("Content-Type: text/plain\r\n"));
-                response.push_str(&String::from("Content-Encoding: gzip\r\n"));
-                response.push_str(&format!("Content-Length: {}\r\n\r\n", compressed.len()));
+                if let Some(encoding) = encoding {
+                    if encoding.contains("gzip") {
+                        let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+                        encoder.write_all(body.as_bytes()).unwrap();
+                        let compressed_body = encoder.finish().unwrap();
+                        response.push_str("Content-Encoding: gzip\r\n");
+                        response
+                            .push_str(&format!("Content-Length: {}\r\n", compressed_body.len()));
 
-                hell = compressed;
-
-                // let res = Response {
-                //     status_code: 200,
-                //     content_type: String::from("text/plain"),
-                //     content_encoding: encoding.unwrap(),
-                //     content_length: compressed_bodylen as i16,
-                //     body: compressed,
-                // };
+                        hell = compressed_body;
+                    } else {
+                        hell = body.into_bytes();
+                        response.push_str(&format!("Content-Length: {}\r\n", hell.len()));
+                    }
+                } else {
+                    hell = body.into_bytes();
+                    response.push_str(&format!("Content-Length: {}\r\n", hell.len()));
+                }
+                response.push_str("\r\n");
             }
             route if route.starts_with("/user-agent") => {
                 let res = Response {
@@ -148,9 +145,9 @@ fn handle_connection(mut stream: TcpStream, request: &str, directory: String) {
         }
     };
 
-    stream
-        .write_all(&[response.as_bytes(), &hell].concat())
-        .unwrap();
+    if let Err(e) = stream.write_all(&[response.as_bytes(), &hell].concat()) {
+        println!("Failed to send response: {}", e);
+    }
 }
 
 fn parse_request(request: &str) -> Result<Request, Error> {
