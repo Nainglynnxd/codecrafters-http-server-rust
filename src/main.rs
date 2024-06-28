@@ -6,6 +6,8 @@ use anyhow::Error;
 use flate2::write::GzEncoder;
 use flate2::Compression;
 use http::HttpRequest;
+use itertools::concat;
+use std::fmt::{self, format};
 use std::task::Wake;
 use std::{fs, fs::File, io::Write, thread};
 use std::{
@@ -34,7 +36,6 @@ fn main() {
 
 fn handle_connection(mut stream: TcpStream, request: &str) {
     let mut response_headers = String::new();
-    let response_body = Vec::new();
     let http_request = parse_request(request);
     let Request {
         method,
@@ -47,7 +48,23 @@ fn handle_connection(mut stream: TcpStream, request: &str) {
     match method.as_str() {
         "GET" => match route.as_str() {
             "/" => {
-                response_headers.push_str(&format!("{} 200 OK\r\n\r\n", version));
+                let response = Response {
+                    status_code: 200,
+                    ..Response::default()
+                };
+                response_headers.push_str(&response.to_string());
+            }
+            route if route.starts_with("/echo/") => {
+                let content = route.replace("/echo/", "");
+                let response = Response {
+                    status_code: 200,
+                    content_type: Some(String::from("text/plain")),
+                    content_length: Some(content.len() as u8),
+                    body: Some(content.clone()),
+                    content_encoding: None,
+                };
+                println!("{}", response.to_string());
+                response_headers.push_str(&response.to_string());
             }
             _ => response_headers.push_str(&format!("{} 404 Not Found\r\n\r\n", version)),
         },
@@ -57,7 +74,7 @@ fn handle_connection(mut stream: TcpStream, request: &str) {
         }
     };
 
-    let response = [response_headers.as_bytes(), &response_body].concat();
+    let response = response_headers.as_bytes();
     stream.write_all(&response).unwrap();
 }
 
@@ -97,4 +114,58 @@ struct Request {
     version: String,
     user_agent: Option<String>,
     encoding: Option<String>,
+}
+
+struct Response {
+    status_code: u8,
+    content_type: Option<String>,
+    content_encoding: Option<String>,
+    content_length: Option<u8>,
+    body: Option<String>,
+}
+
+impl Default for Response {
+    fn default() -> Self {
+        Response {
+            status_code: Default::default(),
+            content_type: Default::default(),
+            content_encoding: Default::default(),
+            content_length: Default::default(),
+            body: Default::default(),
+        }
+    }
+}
+
+impl fmt::Display for Response {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "HTTP/1.1 {} OK\r\n", self.status_code)?;
+
+        if let Some(ref content_type) = self.content_type {
+            write!(f, "Content-Type: {}\r\n", content_type)?;
+        }
+
+        if let Some(ref content_encoding) = self.content_encoding {
+            write!(f, "Content-Encoding: {}\r\n", content_encoding)?;
+        }
+
+        if let Some(length) = self.content_length {
+            write!(f, "Content-Length: {}\r\n", length)?;
+        }
+
+        write!(f, "\r\n")?;
+
+        if let Some(ref body) = self.body {
+            if !body.is_empty() {
+                write!(f, "{}", body)?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl Response {
+    fn to_string(&self) -> String {
+        format!("{}", self)
+    }
 }
