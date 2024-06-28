@@ -1,4 +1,4 @@
-#![allow(unused_imports, dead_code)]
+#![allow(unused_imports, unused_variables)]
 mod http;
 mod utils;
 
@@ -6,6 +6,7 @@ use anyhow::Error;
 use flate2::write::GzEncoder;
 use flate2::Compression;
 use http::HttpRequest;
+use std::task::Wake;
 use std::{fs, fs::File, io::Write, thread};
 use std::{
     io::{prelude::*, BufReader},
@@ -13,8 +14,7 @@ use std::{
 };
 use utils::*;
 const ADDRESS: &str = "127.0.0.1:4221";
-const HTTP_VERSION: &str = "HTTP/1.1";
-const CRLF: &str = "\r\n";
+// const CRLF: &str = "\r\n";
 
 fn main() {
     let listener = TcpListener::bind(ADDRESS).unwrap();
@@ -32,9 +32,33 @@ fn main() {
     }
 }
 
-fn handle_connection(mut _stream: TcpStream, request: &str) {
+fn handle_connection(mut stream: TcpStream, request: &str) {
+    let mut response_headers = String::new();
+    let response_body = Vec::new();
     let http_request = parse_request(request);
-    println!("{:#?}", http_request.unwrap());
+    let Request {
+        method,
+        route,
+        version,
+        user_agent,
+        encoding,
+    } = http_request.unwrap();
+
+    match method.as_str() {
+        "GET" => match route.as_str() {
+            "/" => {
+                response_headers.push_str(&format!("{} 200 OK\r\n\r\n", version));
+            }
+            _ => response_headers.push_str(&format!("{} 404 Not Found\r\n\r\n", version)),
+        },
+        "POST" => {}
+        _ => {
+            eprintln!("Invalid request method");
+        }
+    };
+
+    let response = [response_headers.as_bytes(), &response_body].concat();
+    stream.write_all(&response).unwrap();
 }
 
 fn parse_request(request: &str) -> Result<Request, Error> {

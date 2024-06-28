@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 pub struct HttpRequest {
     pub path: String,
     pub user_agent: Option<String>,

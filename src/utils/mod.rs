@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use super::*;
 
 pub fn parse_request(request: &str) -> Result<HttpRequest, Error> {
