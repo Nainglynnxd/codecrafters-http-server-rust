@@ -1,4 +1,3 @@
-#![allow(unused_imports, unused_variables)]
 mod http;
 mod utils;
 
@@ -6,23 +5,33 @@ use anyhow::Error;
 use flate2::write::GzEncoder;
 use flate2::Compression;
 use http::HttpRequest;
-use std::fmt::{self, format};
+use std::fmt::{self};
 use std::net::{TcpListener, TcpStream};
-use std::{fs, fs::File, io::Write, thread};
-use utils::*;
+use std::{fs, io::Write, thread};
 const ADDRESS: &str = "127.0.0.1:4221";
 
 fn main() {
+    let args: Vec<String> = std::env::args().collect();
+
+    let dir = if args.len() > 2 {
+        args.windows(2)
+            .find(|window| window[0] == "--directory")
+            .map_or(String::new(), |window| window[1].to_owned())
+    } else {
+        String::new()
+    };
+
     let listener = TcpListener::bind(ADDRESS).unwrap();
 
     for stream in listener.incoming() {
         let stream = stream.unwrap();
+        let directory = dir.clone();
         thread::spawn(|| {
             let mut buffer = [0_u8; 1024];
             match stream.peek(&mut buffer) {
                 Ok(bytes) => {
                     let request = String::from_utf8_lossy(&buffer[..bytes]).into_owned();
-                    handle_connection(stream, request.as_str());
+                    handle_connection(stream, request.as_str(), directory);
                 }
                 Err(e) => eprintln!("Failed to read the stream: {e}"),
             }
@@ -30,13 +39,12 @@ fn main() {
     }
 }
 
-fn handle_connection(mut stream: TcpStream, request: &str) {
+fn handle_connection(mut stream: TcpStream, request: &str, directory: String) {
     let mut response = String::new();
     let http_request = parse_request(request);
     let Request {
         method,
         route,
-        version,
         user_agent,
         encoding,
     } = http_request.unwrap();
@@ -80,7 +88,14 @@ fn handle_connection(mut stream: TcpStream, request: &str) {
                 };
                 response.push_str(&res.to_string());
             }
-
+            route if route.starts_with("/files/") => {
+                let filename = route.replace("/files/", "");
+                let mut filepath = directory;
+                if !filepath.ends_with("/") {
+                    filepath.push('/');
+                }
+                filepath.push_str(&filename);
+            }
             _ => response.push_str(Response::NOT_FOUND),
         },
         "POST" => {}
@@ -102,7 +117,6 @@ fn parse_request(request: &str) -> Result<Request, Error> {
     Ok(Request {
         method: String::from(method_line[0]),
         route: String::from(method_line[1]),
-        version: String::from(method_line[2]),
         user_agent,
         encoding,
     })
@@ -126,7 +140,6 @@ fn parse_header(headers: &str) -> (Option<String>, Option<String>) {
 struct Request {
     method: String,
     route: String,
-    version: String,
     user_agent: Option<String>,
     encoding: Option<String>,
 }
