@@ -59,7 +59,17 @@ fn handle_connection(mut stream: TcpStream, request: &str) {
                     status_code: 200,
                     content_type: String::from("text/plain"),
                     content_length: content.len() as i16,
-                    body: content.clone(),
+                    body: content,
+                    ..Response::default()
+                };
+                response.push_str(&res.to_string());
+            }
+            route if route.starts_with("/user-agent") => {
+                let res = Response {
+                    status_code: 200,
+                    content_type: String::from("text/plain"),
+                    content_length: user_agent.as_ref().unwrap().len() as i16,
+                    body: user_agent.unwrap(),
                     ..Response::default()
                 };
                 response.push_str(&res.to_string());
