@@ -7,12 +7,8 @@ use flate2::write::GzEncoder;
 use flate2::Compression;
 use http::HttpRequest;
 use std::fmt::{self, format};
-use std::task::Wake;
+use std::net::{TcpListener, TcpStream};
 use std::{fs, fs::File, io::Write, thread};
-use std::{
-    io::{prelude::*, BufReader},
-    net::{TcpListener, TcpStream},
-};
 use utils::*;
 const ADDRESS: &str = "127.0.0.1:4221";
 
@@ -21,14 +17,16 @@ fn main() {
 
     for stream in listener.incoming() {
         let stream = stream.unwrap();
-        let mut buffer = [0_u8; 1024];
-        match stream.peek(&mut buffer) {
-            Ok(bytes) => {
-                let request = String::from_utf8_lossy(&buffer[..bytes]).into_owned();
-                handle_connection(stream, request.as_str());
+        thread::spawn(|| {
+            let mut buffer = [0_u8; 1024];
+            match stream.peek(&mut buffer) {
+                Ok(bytes) => {
+                    let request = String::from_utf8_lossy(&buffer[..bytes]).into_owned();
+                    handle_connection(stream, request.as_str());
+                }
+                Err(e) => eprintln!("Failed to read the stream: {e}"),
             }
-            Err(e) => eprintln!("Failed to read the stream: {e}"),
-        }
+        });
     }
 }
 
@@ -54,7 +52,7 @@ fn handle_connection(mut stream: TcpStream, request: &str) {
             }
             route if route.starts_with("/echo/") => {
                 let content = route.replace("/echo/", "");
-                let compressed = if !encoding.unwrap().is_empty() {
+                let compressed = if !encoding.as_ref().unwrap().is_empty() {
                     let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
                     encoder.write_all(content.as_bytes()).unwrap();
                     let compressed_body = encoder.finish().unwrap();
@@ -68,7 +66,7 @@ fn handle_connection(mut stream: TcpStream, request: &str) {
                     content_type: String::from("text/plain"),
                     content_length: compressed.len() as i16,
                     body: compressed,
-                    ..Response::default()
+                    content_encoding: encoding.unwrap(),
                 };
                 response.push_str(&res.to_string());
             }
@@ -82,6 +80,7 @@ fn handle_connection(mut stream: TcpStream, request: &str) {
                 };
                 response.push_str(&res.to_string());
             }
+
             _ => response.push_str(Response::NOT_FOUND),
         },
         "POST" => {}
@@ -91,7 +90,7 @@ fn handle_connection(mut stream: TcpStream, request: &str) {
     };
 
     let response = response.as_bytes();
-    stream.write_all(&response).unwrap();
+    stream.write_all(response).unwrap();
 }
 
 fn parse_request(request: &str) -> Result<Request, Error> {
@@ -113,11 +112,11 @@ fn parse_header(headers: &str) -> (Option<String>, Option<String>) {
     let mut lines = headers.lines();
     let user_agent = lines
         .find(|line| line.starts_with("User-Agent: "))
-        .unwrap_or(&"")
+        .unwrap_or("")
         .replace("User-Agent: ", "");
     let encoding = lines
         .find(|line| line.starts_with("Accept-Encoding: "))
-        .unwrap_or(&"")
+        .unwrap_or("")
         .replace("Accept-Encoding: ", "");
 
     (Some(user_agent), Some(encoding))
@@ -132,6 +131,7 @@ struct Request {
     encoding: Option<String>,
 }
 
+#[derive(Default)]
 struct Response {
     status_code: u16,
     content_type: String,
@@ -140,17 +140,17 @@ struct Response {
     body: String,
 }
 
-impl Default for Response {
-    fn default() -> Self {
-        Response {
-            status_code: Default::default(),
-            content_type: Default::default(),
-            content_encoding: Default::default(),
-            content_length: Default::default(),
-            body: Default::default(),
-        }
-    }
-}
+// impl Default for Response {
+//     fn default() -> Self {
+//         Response {
+//             status_code: Default::default(),
+//             content_type: Default::default(),
+//             content_encoding: Default::default(),
+//             content_length: Default::default(),
+//             body: Default::default(),
+//         }
+//     }
+// }
 
 impl fmt::Display for Response {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -180,8 +180,4 @@ impl fmt::Display for Response {
 
 impl Response {
     const NOT_FOUND: &'static str = "HTTP/1.1 404 Not Found\r\n\r\n";
-
-    fn to_string(&self) -> String {
-        format!("{}", self)
-    }
 }

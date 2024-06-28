@@ -14,7 +14,7 @@ pub fn parse_request(request: &str) -> Result<HttpRequest, Error> {
     Ok(http_request)
 }
 
-pub fn parse_header(header: &str, lines: &Vec<&str>) -> String {
+pub fn parse_header(header: &str, lines: &[&str]) -> String {
     lines
         .iter()
         .find(|line| line.starts_with(header))
