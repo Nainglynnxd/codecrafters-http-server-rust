@@ -64,8 +64,10 @@ fn handle_connection(mut stream: TcpStream, request: &str, directory: String) {
                 let body = route.replace("/echo/", "");
                 response.push_str("HTTP/1.1 200 OK\r\n");
                 response.push_str(&String::from("Content-Type: text/plain\r\n"));
+
                 if let Some(encoding) = encoding {
                     if encoding.contains("gzip") {
+                        println!("Hell yeah");
                         let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
                         encoder.write_all(body.as_bytes()).unwrap();
                         let compressed_body = encoder.finish().unwrap();
@@ -155,35 +157,31 @@ fn parse_request(request: &str) -> Result<Request, Error> {
     let (_, body) = headers.split_once("\r\n\r\n").unwrap();
 
     let method_line: Vec<&str> = method_line.split_whitespace().collect();
-    let (user_agent, encoding) = parse_header(headers);
+    let result = parse_header(headers);
 
     Ok(Request {
         method: String::from(method_line[0]),
         route: String::from(method_line[1]),
-        user_agent,
-        encoding,
+        user_agent: result.0,
+        encoding: result.1,
         body: String::from(body),
     })
 }
 
 fn parse_header(headers: &str) -> (Option<String>, Option<String>) {
-    let mut lines = headers.lines();
+    let lines = headers.lines().collect::<Vec<&str>>();
     let user_agent = lines
+        .iter()
         .find(|line| line.starts_with("User-Agent: "))
-        .unwrap_or("")
+        .unwrap_or(&"")
         .replace("User-Agent: ", "");
     let encoding = lines
+        .iter()
         .find(|line| line.starts_with("Accept-Encoding: "))
-        .unwrap_or("")
+        .unwrap_or(&"")
         .replace("Accept-Encoding: ", "");
 
-    let gzip = if encoding.contains("gzip") {
-        "gzip"
-    } else {
-        ""
-    };
-
-    (Some(user_agent), Some(gzip.to_owned()))
+    (Some(user_agent), Some(encoding))
 }
 
 #[derive(Debug)]
