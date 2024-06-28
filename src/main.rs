@@ -6,7 +6,6 @@ use anyhow::Error;
 use flate2::write::GzEncoder;
 use flate2::Compression;
 use http::HttpRequest;
-use itertools::concat;
 use std::fmt::{self, format};
 use std::task::Wake;
 use std::{fs, fs::File, io::Write, thread};
@@ -55,11 +54,20 @@ fn handle_connection(mut stream: TcpStream, request: &str) {
             }
             route if route.starts_with("/echo/") => {
                 let content = route.replace("/echo/", "");
+                let compressed = if !encoding.unwrap().is_empty() {
+                    let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+                    encoder.write_all(content.as_bytes()).unwrap();
+                    let compressed_body = encoder.finish().unwrap();
+                    unsafe { String::from_utf8_unchecked(compressed_body) }
+                } else {
+                    content
+                };
+
                 let res = Response {
                     status_code: 200,
                     content_type: String::from("text/plain"),
-                    content_length: content.len() as i16,
-                    body: content,
+                    content_length: compressed.len() as i16,
+                    body: compressed,
                     ..Response::default()
                 };
                 response.push_str(&res.to_string());
