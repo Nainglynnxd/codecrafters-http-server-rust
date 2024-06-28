@@ -7,7 +7,7 @@ use flate2::Compression;
 use http::HttpRequest;
 use std::fmt::{self};
 use std::net::{TcpListener, TcpStream};
-use std::{fs, io::Write, thread};
+use std::{fs, fs::File, io::Write, thread};
 const ADDRESS: &str = "127.0.0.1:4221";
 
 fn main() {
@@ -41,12 +41,14 @@ fn main() {
 
 fn handle_connection(mut stream: TcpStream, request: &str, directory: String) {
     let mut response = String::new();
+    let mut hell = Vec::new();
     let http_request = parse_request(request);
     let Request {
         method,
         route,
         user_agent,
         encoding,
+        body,
     } = http_request.unwrap();
 
     match method.as_str() {
@@ -63,20 +65,27 @@ fn handle_connection(mut stream: TcpStream, request: &str, directory: String) {
                 let compressed = if !encoding.as_ref().unwrap().is_empty() {
                     let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
                     encoder.write_all(content.as_bytes()).unwrap();
-                    let compressed_body = encoder.finish().unwrap();
-                    unsafe { String::from_utf8_unchecked(compressed_body) }
+                    encoder.finish().unwrap()
                 } else {
-                    content
+                    content.into_bytes()
                 };
 
-                let res = Response {
-                    status_code: 200,
-                    content_type: String::from("text/plain"),
-                    content_length: compressed.len() as i16,
-                    body: compressed,
-                    content_encoding: encoding.unwrap(),
-                };
-                response.push_str(&res.to_string());
+                println!("{:?}", compressed);
+
+                response.push_str(&String::from("HTTP/1.1 200 OK\r\n"));
+                response.push_str(&String::from("Content-Type: text/plain\r\n"));
+                response.push_str(&String::from("Content-Encoding: gzip\r\n"));
+                response.push_str(&format!("Content-Length: {}\r\n\r\n", compressed.len()));
+
+                hell = compressed;
+
+                // let res = Response {
+                //     status_code: 200,
+                //     content_type: String::from("text/plain"),
+                //     content_encoding: encoding.unwrap(),
+                //     content_length: compressed_bodylen as i16,
+                //     body: compressed,
+                // };
             }
             route if route.starts_with("/user-agent") => {
                 let res = Response {
@@ -114,18 +123,39 @@ fn handle_connection(mut stream: TcpStream, request: &str, directory: String) {
             }
             _ => response.push_str(Response::NOT_FOUND),
         },
-        "POST" => {}
+        "POST" => {
+            let filename = route.strip_prefix("/files/").unwrap();
+            let mut filepath = directory;
+            if !filepath.ends_with('/') {
+                filepath.push('/');
+            }
+            filepath.push_str(filename);
+            let mut file = match File::create(&filepath) {
+                Ok(f) => f,
+                Err(e) => {
+                    eprintln!("Failed to create file: {e}");
+                    return;
+                }
+            };
+
+            if let Err(e) = file.write_all(body.as_bytes()) {
+                eprintln!("Failed to write to file: {e}");
+            }
+            response.push_str(Response::CREATED);
+        }
         _ => {
             eprintln!("Invalid request method");
         }
     };
 
-    let response = response.as_bytes();
-    stream.write_all(response).unwrap();
+    stream
+        .write_all(&[response.as_bytes(), &hell].concat())
+        .unwrap();
 }
 
 fn parse_request(request: &str) -> Result<Request, Error> {
     let (method_line, headers) = request.split_once("\r\n").unwrap();
+    let (_, body) = headers.split_once("\r\n\r\n").unwrap();
 
     let method_line: Vec<&str> = method_line.split_whitespace().collect();
     let (user_agent, encoding) = parse_header(headers);
@@ -135,6 +165,7 @@ fn parse_request(request: &str) -> Result<Request, Error> {
         route: String::from(method_line[1]),
         user_agent,
         encoding,
+        body: String::from(body),
     })
 }
 
@@ -149,7 +180,13 @@ fn parse_header(headers: &str) -> (Option<String>, Option<String>) {
         .unwrap_or("")
         .replace("Accept-Encoding: ", "");
 
-    (Some(user_agent), Some(encoding))
+    let gzip = if encoding.contains("gzip") {
+        "gzip"
+    } else {
+        ""
+    };
+
+    (Some(user_agent), Some(gzip.to_owned()))
 }
 
 #[derive(Debug)]
@@ -158,6 +195,7 @@ struct Request {
     route: String,
     user_agent: Option<String>,
     encoding: Option<String>,
+    body: String,
 }
 
 #[derive(Default)]
@@ -208,5 +246,6 @@ impl fmt::Display for Response {
 }
 
 impl Response {
+    const CREATED: &'static str = "HTTP/1.1 201 Created\r\n\r\n";
     const NOT_FOUND: &'static str = "HTTP/1.1 404 Not Found\r\n\r\n";
 }
