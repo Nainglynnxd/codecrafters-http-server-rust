@@ -16,7 +16,6 @@ use std::{
 };
 use utils::*;
 const ADDRESS: &str = "127.0.0.1:4221";
-// const CRLF: &str = "\r\n";
 
 fn main() {
     let listener = TcpListener::bind(ADDRESS).unwrap();
@@ -35,7 +34,7 @@ fn main() {
 }
 
 fn handle_connection(mut stream: TcpStream, request: &str) {
-    let mut response_headers = String::new();
+    let mut response = String::new();
     let http_request = parse_request(request);
     let Request {
         method,
@@ -48,25 +47,24 @@ fn handle_connection(mut stream: TcpStream, request: &str) {
     match method.as_str() {
         "GET" => match route.as_str() {
             "/" => {
-                let response = Response {
+                let res = Response {
                     status_code: 200,
                     ..Response::default()
                 };
-                response_headers.push_str(&response.to_string());
+                response.push_str(&res.to_string());
             }
             route if route.starts_with("/echo/") => {
                 let content = route.replace("/echo/", "");
-                let response = Response {
+                let res = Response {
                     status_code: 200,
-                    content_type: Some(String::from("text/plain")),
-                    content_length: Some(content.len() as u8),
-                    body: Some(content.clone()),
-                    content_encoding: None,
+                    content_type: String::from("text/plain"),
+                    content_length: content.len() as i16,
+                    body: content.clone(),
+                    ..Response::default()
                 };
-                println!("{}", response.to_string());
-                response_headers.push_str(&response.to_string());
+                response.push_str(&res.to_string());
             }
-            _ => response_headers.push_str(&format!("{} 404 Not Found\r\n\r\n", version)),
+            _ => response.push_str(Response::NOT_FOUND),
         },
         "POST" => {}
         _ => {
@@ -74,7 +72,7 @@ fn handle_connection(mut stream: TcpStream, request: &str) {
         }
     };
 
-    let response = response_headers.as_bytes();
+    let response = response.as_bytes();
     stream.write_all(&response).unwrap();
 }
 
@@ -117,11 +115,11 @@ struct Request {
 }
 
 struct Response {
-    status_code: u8,
-    content_type: Option<String>,
-    content_encoding: Option<String>,
-    content_length: Option<u8>,
-    body: Option<String>,
+    status_code: u16,
+    content_type: String,
+    content_encoding: String,
+    content_length: i16,
+    body: String,
 }
 
 impl Default for Response {
@@ -140,24 +138,22 @@ impl fmt::Display for Response {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "HTTP/1.1 {} OK\r\n", self.status_code)?;
 
-        if let Some(ref content_type) = self.content_type {
-            write!(f, "Content-Type: {}\r\n", content_type)?;
+        if !self.content_type.is_empty() {
+            write!(f, "Content-Type: {}\r\n", self.content_type)?;
         }
 
-        if let Some(ref content_encoding) = self.content_encoding {
-            write!(f, "Content-Encoding: {}\r\n", content_encoding)?;
+        if !self.content_encoding.is_empty() {
+            write!(f, "Content-Encoding: {}\r\n", self.content_encoding)?;
         }
 
-        if let Some(length) = self.content_length {
-            write!(f, "Content-Length: {}\r\n", length)?;
+        if self.content_length >= 0 {
+            write!(f, "Content-Length: {}\r\n", self.content_length)?;
         }
 
         write!(f, "\r\n")?;
 
-        if let Some(ref body) = self.body {
-            if !body.is_empty() {
-                write!(f, "{}", body)?;
-            }
+        if !self.body.is_empty() {
+            write!(f, "{}", self.body)?;
         }
 
         Ok(())
@@ -165,6 +161,8 @@ impl fmt::Display for Response {
 }
 
 impl Response {
+    const NOT_FOUND: &'static str = "HTTP/1.1 404 Not Found\r\n\r\n";
+
     fn to_string(&self) -> String {
         format!("{}", self)
     }
