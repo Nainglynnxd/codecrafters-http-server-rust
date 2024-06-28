@@ -91,10 +91,26 @@ fn handle_connection(mut stream: TcpStream, request: &str, directory: String) {
             route if route.starts_with("/files/") => {
                 let filename = route.replace("/files/", "");
                 let mut filepath = directory;
-                if !filepath.ends_with("/") {
+                if !filepath.ends_with('/') {
                     filepath.push('/');
                 }
                 filepath.push_str(&filename);
+                match fs::read(&filepath) {
+                    Ok(content) => {
+                        let res = Response {
+                            status_code: 200,
+                            content_length: content.len() as i16,
+                            content_type: String::from("application/octet-stream"),
+                            body: unsafe { String::from_utf8_unchecked(content) },
+                            ..Response::default()
+                        };
+                        response.push_str(&res.to_string());
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to read the file: {e}");
+                        response.push_str(Response::NOT_FOUND);
+                    }
+                }
             }
             _ => response.push_str(Response::NOT_FOUND),
         },
