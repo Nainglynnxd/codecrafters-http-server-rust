@@ -202,18 +202,6 @@ struct Response {
     body: String,
 }
 
-// impl Default for Response {
-//     fn default() -> Self {
-//         Response {
-//             status_code: Default::default(),
-//             content_type: Default::default(),
-//             content_encoding: Default::default(),
-//             content_length: Default::default(),
-//             body: Default::default(),
-//         }
-//     }
-// }
-
 impl fmt::Display for Response {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "HTTP/1.1 {} OK\r\n", self.status_code)?;
